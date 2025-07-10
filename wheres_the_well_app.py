@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-Where's the Well? - Interactive Water Source Locator
-A desktop application for logging and evaluating water sources offline.
-"""
-
 import os
 import sqlite3
 import base64
@@ -34,10 +28,16 @@ def init_db():
             confidence_score REAL,
             notes TEXT,
             photo_data TEXT,
-            added_by TEXT,
+            added_by TEXT DEFAULT 'Anonymous',
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    
+    # Check if added_by column exists, add it if not
+    cursor.execute("PRAGMA table_info(water_sources)")
+    columns = [column[1] for column in cursor.fetchall()]
+    if 'added_by' not in columns:
+        cursor.execute('ALTER TABLE water_sources ADD COLUMN added_by TEXT DEFAULT "Anonymous"')
     
     # Votes table
     cursor.execute('''
@@ -155,22 +155,49 @@ HTML_TEMPLATE = '''
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
-    <!-- Login Modal -->
-    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4">
-            <div class="text-center">
-                <h2 class="text-2xl font-bold text-gray-800 mb-2">Welcome to Where's the Well?</h2>
-                <p class="text-gray-600 mb-6">Please enter your name to start mapping water sources</p>
-                
-                <form id="loginForm" class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Your Name</label>
-                        <input type="text" id="usernameInput" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Enter your name" required>
+    <!-- Login Page -->
+    <div id="loginPage" class="fixed inset-0 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 flex items-center justify-center z-50">
+        <div class="w-full h-full flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl shadow-2xl p-12 max-w-md w-full">
+                <div class="text-center mb-8">
+                    <div class="mb-6">
+                        <svg class="w-16 h-16 mx-auto text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"></path>
+                        </svg>
                     </div>
-                    <button type="submit" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition font-medium">
-                        🚀 Start Mapping
+                    <h1 class="text-3xl font-bold text-gray-800 mb-3">Where's the Well?</h1>
+                    <p class="text-gray-600 mb-8">Access the Interactive Water Source Locator</p>
+                </div>
+                
+                <form id="loginForm" class="space-y-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                        <input type="text" id="usernameInput" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" placeholder="Enter your username" required>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                        <input type="password" id="passwordInput" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" placeholder="Enter your password" required>
+                        <p class="text-xs text-gray-500 mt-1">Any password will work for this demo</p>
+                    </div>
+                    
+                    <button type="submit" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition font-medium text-lg">
+                        🚀 Sign In
                     </button>
                 </form>
+                
+                <div class="mt-8 text-center">
+                    <div class="flex items-center justify-center space-x-4 text-sm text-gray-500">
+                        <div class="flex items-center">
+                            <div class="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+                            <span>Offline Ready</span>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
+                            <span>Community Driven</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -350,10 +377,10 @@ HTML_TEMPLATE = '''
             currentUsername = localStorage.getItem('wheres_the_well_username');
             if (currentUsername) {
                 document.getElementById('currentUsername').textContent = currentUsername;
-                document.getElementById('loginModal').style.display = 'none';
+                document.getElementById('loginPage').style.display = 'none';
                 initMap();
             } else {
-                document.getElementById('loginModal').style.display = 'flex';
+                document.getElementById('loginPage').style.display = 'block';
             }
         }
 
@@ -361,12 +388,16 @@ HTML_TEMPLATE = '''
         document.getElementById('loginForm').addEventListener('submit', function(e) {
             e.preventDefault();
             const username = document.getElementById('usernameInput').value.trim();
-            if (username) {
+            const password = document.getElementById('passwordInput').value; // Password is ignored but required for form
+            
+            if (username && password) {
                 currentUsername = username;
                 localStorage.setItem('wheres_the_well_username', username);
                 document.getElementById('currentUsername').textContent = username;
-                document.getElementById('loginModal').style.display = 'none';
+                document.getElementById('loginPage').style.display = 'none';
                 initMap();
+            } else {
+                alert('Please enter both username and password');
             }
         });
 
@@ -374,8 +405,9 @@ HTML_TEMPLATE = '''
         function logout() {
             localStorage.removeItem('wheres_the_well_username');
             currentUsername = null;
-            document.getElementById('loginModal').style.display = 'flex';
+            document.getElementById('loginPage').style.display = 'block';
             document.getElementById('usernameInput').value = '';
+            document.getElementById('passwordInput').value = '';
         }
 
         // Initialize map
@@ -867,22 +899,23 @@ def add_water_source():
 def get_water_sources():
     try:
         conn = sqlite3.connect('water_sources.db')
+        conn.row_factory = sqlite3.Row  # This allows us to access columns by name
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM water_sources ORDER BY timestamp DESC')
         
         sources = []
         for row in cursor.fetchall():
             sources.append({
-                'id': row[0],
-                'name': row[1],
-                'latitude': row[2],
-                'longitude': row[3],
-                'water_type': row[4],
-                'cleanliness_level': row[5],
-                'confidence_score': row[6],
-                'notes': row[7],
-                'added_by': row[9],
-                'timestamp': row[10]
+                'id': row['id'],
+                'name': row['name'],
+                'latitude': row['latitude'],
+                'longitude': row['longitude'],
+                'water_type': row['water_type'],
+                'cleanliness_level': row['cleanliness_level'],
+                'confidence_score': row['confidence_score'],
+                'notes': row['notes'],
+                'added_by': row['added_by'] if row['added_by'] else 'Anonymous',
+                'timestamp': row['timestamp']
             })
         
         conn.close()
@@ -894,22 +927,23 @@ def get_water_sources():
 def get_water_source_details(source_id):
     try:
         conn = sqlite3.connect('water_sources.db')
+        conn.row_factory = sqlite3.Row  # This allows us to access columns by name
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM water_sources WHERE id = ?', (source_id,))
         
         row = cursor.fetchone()
         if row:
             source = {
-                'id': row[0],
-                'name': row[1],
-                'latitude': row[2],
-                'longitude': row[3],
-                'water_type': row[4],
-                'cleanliness_level': row[5],
-                'confidence_score': row[6],
-                'notes': row[7],
-                'added_by': row[9],
-                'timestamp': row[10]
+                'id': row['id'],
+                'name': row['name'],
+                'latitude': row['latitude'],
+                'longitude': row['longitude'],
+                'water_type': row['water_type'],
+                'cleanliness_level': row['cleanliness_level'],
+                'confidence_score': row['confidence_score'],
+                'notes': row['notes'],
+                'added_by': row['added_by'] if row['added_by'] else 'Anonymous',
+                'timestamp': row['timestamp']
             }
             conn.close()
             return jsonify(source)
