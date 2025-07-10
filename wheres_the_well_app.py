@@ -335,30 +335,21 @@ HTML_TEMPLATE = '''
                     </form>
                 </div>
 
-                <!-- Stats Card -->
+                <!-- Water Sources Near Me -->
                 <div class="bg-white rounded-xl shadow-lg p-6">
-                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Water Sources Summary</h3>
-                    <div id="statsContainer" class="space-y-3">
-                        <div class="flex justify-between items-center p-3 bg-green-50 rounded-lg">
-                            <div class="flex items-center">
-                                <div class="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
-                                <span class="font-medium">Clean</span>
-                            </div>
-                            <span id="cleanCount" class="font-bold text-green-600">0</span>
-                        </div>
-                        <div class="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
-                            <div class="flex items-center">
-                                <div class="w-3 h-3 bg-yellow-500 rounded-full mr-3"></div>
-                                <span class="font-medium">Muddy</span>
-                            </div>
-                            <span id="muddyCount" class="font-bold text-yellow-600">0</span>
-                        </div>
-                        <div class="flex justify-between items-center p-3 bg-red-50 rounded-lg">
-                            <div class="flex items-center">
-                                <div class="w-3 h-3 bg-red-500 rounded-full mr-3"></div>
-                                <span class="font-medium">Contaminated</span>
-                            </div>
-                            <span id="contaminatedCount" class="font-bold text-red-600">0</span>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"></path>
+                        </svg>
+                        Water Sources Near Me
+                    </h3>
+                    <div id="nearbySourcesContainer" class="space-y-3">
+                        <div class="text-center py-8 text-gray-500">
+                            <svg class="w-12 h-12 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                            <p>Click "Find Me" to see nearby water sources</p>
                         </div>
                     </div>
                 </div>
@@ -375,6 +366,7 @@ HTML_TEMPLATE = '''
         let selectedLatLng = null;
         let currentPhotoData = null;
         let currentUsername = null;
+        let userLocation = null; // Store user's current location
 
         // Initialize app when page loads
         document.addEventListener('DOMContentLoaded', function() {
@@ -463,6 +455,9 @@ HTML_TEMPLATE = '''
                         const lat = position.coords.latitude;
                         const lng = position.coords.longitude;
                         
+                        // Store user location
+                        userLocation = { latitude: lat, longitude: lng };
+                        
                         // Update map view
                         map.setView([lat, lng], 15);
                         
@@ -479,10 +474,14 @@ HTML_TEMPLATE = '''
                                 iconAnchor: [10, 10]
                             })
                         }).addTo(map).bindPopup("📍 Your current location");
+                        
+                        // Update nearby sources list
+                        updateNearbyWaterSources();
                     },
                     function(error) {
                         console.log("Geolocation error:", error);
                         // Use default location if geolocation fails
+                        userLocation = null;
                     }
                 );
             }
@@ -631,8 +630,8 @@ HTML_TEMPLATE = '''
                     marker.addTo(map);
                 });
                 
-                // Update stats
-                updateStats(data);
+                // Update nearby sources list
+                updateNearbyWaterSources(data);
             })
             .catch(error => {
                 console.error('Error loading water sources:', error);
@@ -904,16 +903,161 @@ HTML_TEMPLATE = '''
             });
         }
 
-        // Update statistics
-        function updateStats(sources) {
-            const stats = sources.reduce((acc, source) => {
-                acc[source.cleanliness_level] = (acc[source.cleanliness_level] || 0) + 1;
-                return acc;
-            }, {});
+        // Calculate distance between two points using Haversine formula
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Radius of the Earth in kilometers
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            const distance = R * c; // Distance in kilometers
+            return distance;
+        }
+
+        // Format distance for display
+        function formatDistance(distanceKm) {
+            if (distanceKm < 1) {
+                return Math.round(distanceKm * 1000) + 'm';
+            } else if (distanceKm < 10) {
+                return distanceKm.toFixed(1) + 'km';
+            } else {
+                return Math.round(distanceKm) + 'km';
+            }
+        }
+
+        // Update nearby water sources list
+        function updateNearbyWaterSources(sources = null) {
+            const container = document.getElementById('nearbySourcesContainer');
             
-            document.getElementById('cleanCount').textContent = stats.clean || 0;
-            document.getElementById('muddyCount').textContent = stats.muddy || 0;
-            document.getElementById('contaminatedCount').textContent = stats.contaminated || 0;
+            if (!userLocation) {
+                container.innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <svg class="w-12 h-12 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                        <p>Click "Find Me" to see nearby water sources</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // If sources not provided, fetch them
+            if (!sources) {
+                fetch('/get_water_sources')
+                .then(response => response.json())
+                .then(data => updateNearbyWaterSources(data))
+                .catch(error => console.error('Error fetching water sources:', error));
+                return;
+            }
+            
+            // Calculate distances and sort by proximity
+            const sourcesWithDistance = sources.map(source => ({
+                ...source,
+                distance: calculateDistance(
+                    userLocation.latitude, 
+                    userLocation.longitude,
+                    source.latitude, 
+                    source.longitude
+                )
+            })).sort((a, b) => a.distance - b.distance);
+            
+            if (sourcesWithDistance.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <svg class="w-12 h-12 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        <p>No water sources found</p>
+                        <p class="text-sm mt-1">Start by adding some water sources to the map!</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Display top 10 nearest sources
+            const nearestSources = sourcesWithDistance.slice(0, 10);
+            
+            container.innerHTML = nearestSources.map(source => {
+                const qualityColor = getQualityColor(source.cleanliness_level);
+                const qualityEmoji = getQualityEmoji(source.cleanliness_level);
+                
+                return `
+                    <div onclick="navigateToWaterSource(${source.id}, ${source.latitude}, ${source.longitude})" 
+                         class="p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition">
+                        <div class="flex items-center justify-between">
+                            <div class="flex-1">
+                                <div class="flex items-center mb-1">
+                                    <span class="text-lg mr-2">${qualityEmoji}</span>
+                                    <h4 class="font-medium text-gray-800 truncate">${source.name}</h4>
+                                </div>
+                                <div class="flex items-center text-sm text-gray-600">
+                                    <span class="px-2 py-1 ${qualityColor} rounded text-xs mr-2">${source.cleanliness_level}</span>
+                                    <span>${source.water_type}</span>
+                                </div>
+                                <div class="text-xs text-gray-500 mt-1">
+                                    Added by ${source.added_by}
+                                </div>
+                            </div>
+                            <div class="text-right ml-3">
+                                <div class="text-sm font-medium text-blue-600">${formatDistance(source.distance)}</div>
+                                <div class="text-xs text-gray-500">away</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Navigate to water source on map and show details
+        function navigateToWaterSource(sourceId, latitude, longitude) {
+            // Center map on the water source
+            map.setView([latitude, longitude], 16);
+            
+            // Find and open the marker popup
+            const marker = waterSourceMarkers.find(m => {
+                const markerLatLng = m.getLatLng();
+                return Math.abs(markerLatLng.lat - latitude) < 0.0001 && 
+                       Math.abs(markerLatLng.lng - longitude) < 0.0001;
+            });
+            
+            if (marker) {
+                marker.openPopup();
+            }
+            
+            // Show details in the panel
+            showWaterSourceDetails(sourceId);
+        }
+
+        // Get quality color for badges
+        function getQualityColor(quality) {
+            switch(quality) {
+                case 'clean':
+                    return 'bg-green-100 text-green-800';
+                case 'muddy':
+                    return 'bg-yellow-100 text-yellow-800';
+                case 'contaminated':
+                    return 'bg-red-100 text-red-800';
+                default:
+                    return 'bg-gray-100 text-gray-800';
+            }
+        }
+
+        // Get quality emoji
+        function getQualityEmoji(quality) {
+            switch(quality) {
+                case 'clean':
+                    return '💧';
+                case 'muddy':
+                    return '🟡';
+                case 'contaminated':
+                    return '🔴';
+                default:
+                    return '❓';
+            }
         }
     </script>
 </body>
