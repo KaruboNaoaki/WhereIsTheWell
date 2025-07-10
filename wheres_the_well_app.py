@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+"""
+Where's the Well? - Interactive Water Source Locator
+A desktop application for logging and evaluating water sources offline.
+"""
+
 import os
 import sqlite3
 import base64
@@ -152,13 +158,59 @@ HTML_TEMPLATE = '''
         .water-marker-muddy { background-color: #f59e0b; }
         .water-marker-contaminated { background-color: #ef4444; }
         .user-location { background-color: #3b82f6; }
+        
+        .wave-background {
+            background: linear-gradient(-45deg, #1e3a8a, #3b82f6, #60a5fa, #93c5fd);
+            background-size: 400% 400%;
+            animation: gradientWave 12s ease infinite;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .wave-background::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(255,255,255,0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255,255,255,0.1) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(255,255,255,0.05) 0%, transparent 50%);
+            animation: waveFloat 8s ease-in-out infinite;
+        }
+        
+        @keyframes gradientWave {
+            0% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+            100% {
+                background-position: 0% 50%;
+            }
+        }
+        
+        @keyframes waveFloat {
+            0%, 100% {
+                transform: translate(0, 0) scale(1);
+            }
+            33% {
+                transform: translate(20px, -20px) scale(1.1);
+            }
+            66% {
+                transform: translate(-20px, 20px) scale(0.9);
+            }
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
     <!-- Login Page -->
-    <div id="loginPage" class="fixed inset-0 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 flex items-center justify-center z-50">
+    <div id="loginPage" class="fixed inset-0 wave-background flex items-center justify-center z-50">
         <div class="w-full h-full flex items-center justify-center p-4">
-            <div class="bg-white rounded-2xl shadow-2xl p-12 max-w-md w-full">
+            <div class="bg-white rounded-2xl shadow-2xl p-12 max-w-md w-full relative z-10">
                 <div class="text-center mb-8">
                     <div class="mb-6">
                         <svg class="w-16 h-16 mx-auto text-blue-600" fill="currentColor" viewBox="0 0 20 20">
@@ -184,19 +236,6 @@ HTML_TEMPLATE = '''
                         🚀 Sign In
                     </button>
                 </form>
-                
-                <div class="mt-8 text-center">
-                    <div class="flex items-center justify-center space-x-4 text-sm text-gray-500">
-                        <div class="flex items-center">
-                            <div class="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-                            <span>Offline Ready</span>
-                        </div>
-                        <div class="flex items-center">
-                            <div class="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
-                            <span>Community Driven</span>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
