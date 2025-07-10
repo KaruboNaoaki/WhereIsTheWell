@@ -178,7 +178,6 @@ HTML_TEMPLATE = '''
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
                         <input type="password" id="passwordInput" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" placeholder="Enter your password" required>
-                        <p class="text-xs text-gray-500 mt-1">Any password will work for this demo</p>
                     </div>
                     
                     <button type="submit" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition font-medium text-lg">
@@ -228,7 +227,7 @@ HTML_TEMPLATE = '''
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
             
             <!-- Map Column -->
-            <div class="lg:col-span-2">
+            <div class="lg:col-span-2 space-y-6">
                 <div class="bg-white rounded-xl shadow-lg overflow-hidden">
                     <div class="p-6 border-b border-gray-200">
                         <h2 class="text-xl font-semibold text-gray-800 flex items-center">
@@ -237,7 +236,7 @@ HTML_TEMPLATE = '''
                             </svg>
                             Interactive Map
                         </h2>
-                        <p class="text-gray-600 text-sm mt-1">Click on the map to add a new water source</p>
+                        <p class="text-gray-600 text-sm mt-1">Click on the map to add a new water source, or click a marker for details</p>
                     </div>
                     <div id="map" class="h-96 w-full"></div>
                     <div class="p-4 bg-gray-50">
@@ -264,6 +263,16 @@ HTML_TEMPLATE = '''
                                 📍 Find Me
                             </button>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Water Source Details Panel -->
+                <div id="detailsPanel" class="bg-white rounded-xl shadow-lg overflow-hidden hidden">
+                    <div class="p-6 border-b border-gray-200">
+                        <h3 class="text-xl font-semibold text-gray-800">Water Source Details</h3>
+                    </div>
+                    <div id="detailsContent" class="p-6">
+                        <!-- Details content will be populated here -->
                     </div>
                 </div>
             </div>
@@ -662,21 +671,34 @@ HTML_TEMPLATE = '''
             
             const confidence = source.confidence_score ? (source.confidence_score * 100).toFixed(1) : 'N/A';
             
-            // Create detailed popup with voting and comments
-            marker.bindPopup('Loading...', {
-                maxWidth: 350,
-                className: 'water-source-popup'
-            });
-            
-            marker.on('click', function() {
-                loadWaterSourceDetails(source.id, marker);
-            });
+            // Simple popup with basic info
+            marker.bindPopup(`
+                <div class="p-2">
+                    <h4 class="font-bold text-lg">${source.name}</h4>
+                    <p><strong>Type:</strong> ${source.water_type}</p>
+                    <p><strong>Quality:</strong> ${source.cleanliness_level} (${confidence}% confidence)</p>
+                    <p><strong>Added by:</strong> ${source.added_by}</p>
+                    <button onclick="showWaterSourceDetails(${source.id})" class="mt-2 w-full bg-blue-500 text-white py-1 px-3 rounded text-sm hover:bg-blue-600 transition">
+                        📋 View Full Details
+                    </button>
+                </div>
+            `);
             
             return marker;
         }
 
-        // Load detailed water source information with votes and comments
-        function loadWaterSourceDetails(sourceId, marker) {
+        // Show detailed water source information in the details panel
+        function showWaterSourceDetails(sourceId) {
+            const detailsPanel = document.getElementById('detailsPanel');
+            const detailsContent = document.getElementById('detailsContent');
+            
+            // Show loading state
+            detailsPanel.classList.remove('hidden');
+            detailsContent.innerHTML = '<div class="text-center py-8"><div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div><p class="mt-2 text-gray-600">Loading details...</p></div>';
+            
+            // Scroll to details panel
+            detailsPanel.scrollIntoView({ behavior: 'smooth' });
+            
             Promise.all([
                 fetch(`/get_water_source_details/${sourceId}`).then(r => r.json()),
                 fetch(`/get_votes/${sourceId}`).then(r => r.json()),
@@ -688,68 +710,136 @@ HTML_TEMPLATE = '''
                 const downvotes = votes.filter(v => v.vote_type === 'downvote').length;
                 const userVote = votes.find(v => v.username === currentUsername);
                 
-                const popupContent = `
-                    <div class="p-3 max-w-sm">
-                        <h4 class="font-bold text-lg mb-2">${source.name}</h4>
-                        <div class="space-y-2 text-sm">
-                            <p><strong>Type:</strong> ${source.water_type}</p>
-                            <p><strong>Quality:</strong> ${source.cleanliness_level} (${confidence}% confidence)</p>
-                            <p><strong>Added by:</strong> ${source.added_by}</p>
-                            <p><strong>Location:</strong> ${source.latitude.toFixed(4)}, ${source.longitude.toFixed(4)}</p>
-                            ${source.notes ? `<p><strong>Notes:</strong> ${source.notes}</p>` : ''}
-                        </div>
-                        
-                        <!-- Voting Section -->
-                        <div class="mt-4 pt-3 border-t border-gray-200">
-                            <div class="flex items-center justify-between mb-3">
-                                <span class="font-medium text-gray-700">Community Feedback</span>
-                                <div class="flex items-center space-x-2">
-                                    <span class="text-green-600">👍 ${upvotes}</span>
-                                    <span class="text-red-600">👎 ${downvotes}</span>
+                detailsContent.innerHTML = `
+                    <div class="space-y-6">
+                        <!-- Basic Information -->
+                        <div>
+                            <h4 class="text-2xl font-bold text-gray-800 mb-4">${source.name}</h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="space-y-3">
+                                    <div>
+                                        <span class="font-medium text-gray-700">Type:</span>
+                                        <span class="ml-2 px-2 py-1 bg-gray-100 rounded text-sm">${source.water_type}</span>
+                                    </div>
+                                    <div>
+                                        <span class="font-medium text-gray-700">Quality:</span>
+                                        <span class="ml-2 px-2 py-1 ${getQualityBadgeClass(source.cleanliness_level)} rounded text-sm">${source.cleanliness_level} (${confidence}% confidence)</span>
+                                    </div>
+                                    <div>
+                                        <span class="font-medium text-gray-700">Added by:</span>
+                                        <span class="ml-2">${source.added_by}</span>
+                                    </div>
+                                    <div>
+                                        <span class="font-medium text-gray-700">Date added:</span>
+                                        <span class="ml-2">${new Date(source.timestamp).toLocaleDateString()}</span>
+                                    </div>
+                                </div>
+                                <div class="space-y-3">
+                                    <div>
+                                        <span class="font-medium text-gray-700">Coordinates:</span>
+                                        <div class="ml-2 text-sm font-mono bg-gray-100 px-2 py-1 rounded">
+                                            ${source.latitude.toFixed(6)}, ${source.longitude.toFixed(6)}
+                                        </div>
+                                    </div>
+                                    ${source.notes ? `
+                                        <div>
+                                            <span class="font-medium text-gray-700">Notes:</span>
+                                            <div class="ml-2 mt-1 p-3 bg-gray-50 rounded text-sm">${source.notes}</div>
+                                        </div>
+                                    ` : ''}
                                 </div>
                             </div>
-                            <div class="flex space-x-2 mb-3">
-                                <button onclick="vote(${sourceId}, 'upvote')" class="flex-1 py-2 px-3 rounded text-sm font-medium transition ${userVote?.vote_type === 'upvote' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-green-100'}">
-                                    👍 Accurate
+                        </div>
+
+                        <!-- Community Feedback Section -->
+                        <div class="border-t border-gray-200 pt-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h5 class="text-lg font-semibold text-gray-800">Community Feedback</h5>
+                                <div class="flex items-center space-x-4">
+                                    <span class="flex items-center text-green-600">
+                                        <svg class="w-5 h-5 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z"></path>
+                                        </svg>
+                                        ${upvotes}
+                                    </span>
+                                    <span class="flex items-center text-red-600">
+                                        <svg class="w-5 h-5 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M18 9.5a1.5 1.5 0 11-3 0v-6a1.5 1.5 0 013 0v6zM14 9.667v-5.43a2 2 0 00-1.106-1.79l-.05-.025A4 4 0 0011.057 2H5.641a2 2 0 00-1.962 1.608l-1.2 6A2 2 0 004.44 12H8v4a2 2 0 002 2 1 1 0 001-1v-.667a4 4 0 01.8-2.4l1.4-1.866a4 4 0 00.8-2.4z"></path>
+                                        </svg>
+                                        ${downvotes}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            <div class="flex space-x-3 mb-6">
+                                <button onclick="vote(${sourceId}, 'upvote')" class="flex-1 py-3 px-4 rounded-lg font-medium transition ${userVote?.vote_type === 'upvote' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-green-100'}">
+                                    👍 Accurate Information
                                 </button>
-                                <button onclick="vote(${sourceId}, 'downvote')" class="flex-1 py-2 px-3 rounded text-sm font-medium transition ${userVote?.vote_type === 'downvote' ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-red-100'}">
-                                    👎 Inaccurate
+                                <button onclick="vote(${sourceId}, 'downvote')" class="flex-1 py-3 px-4 rounded-lg font-medium transition ${userVote?.vote_type === 'downvote' ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-red-100'}">
+                                    👎 Inaccurate Information
                                 </button>
                             </div>
                         </div>
-                        
+
                         <!-- Comments Section -->
-                        <div class="mt-4 pt-3 border-t border-gray-200">
-                            <div class="mb-3">
-                                <textarea id="commentText_${sourceId}" placeholder="Add a comment..." class="w-full px-2 py-1 text-sm border border-gray-300 rounded resize-none" rows="2"></textarea>
-                                <button onclick="addComment(${sourceId})" class="mt-2 w-full py-1 px-3 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition">
+                        <div class="border-t border-gray-200 pt-6">
+                            <h5 class="text-lg font-semibold text-gray-800 mb-4">Comments & Additional Info</h5>
+                            
+                            <!-- Add Comment -->
+                            <div class="mb-6">
+                                <textarea id="commentText_${sourceId}" placeholder="Share additional information about this water source..." class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none" rows="3"></textarea>
+                                <button onclick="addComment(${sourceId})" class="mt-3 px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium">
                                     💬 Add Comment
                                 </button>
                             </div>
                             
-                            <div class="space-y-2 max-h-32 overflow-y-auto">
+                            <!-- Comments List -->
+                            <div class="space-y-4">
+                                ${comments.length === 0 ? '<p class="text-gray-500 text-center py-4">No comments yet. Be the first to share additional information!</p>' : ''}
                                 ${comments.map(comment => `
-                                    <div class="bg-gray-50 p-2 rounded text-xs">
-                                        <div class="font-medium text-gray-800">${comment.username}</div>
-                                        <div class="text-gray-600">${comment.comment}</div>
-                                        <div class="text-gray-400 text-xs mt-1">${new Date(comment.timestamp).toLocaleDateString()}</div>
+                                    <div class="bg-gray-50 p-4 rounded-lg">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <span class="font-medium text-gray-800">${comment.username}</span>
+                                            <span class="text-gray-400 text-sm">${new Date(comment.timestamp).toLocaleDateString()}</span>
+                                        </div>
+                                        <p class="text-gray-700">${comment.comment}</p>
                                     </div>
                                 `).join('')}
                             </div>
                         </div>
-                        
-                        <div class="text-xs text-gray-500 mt-3 pt-2 border-t border-gray-200">
-                            Added on ${new Date(source.timestamp).toLocaleDateString()}
+
+                        <!-- Close Button -->
+                        <div class="border-t border-gray-200 pt-6">
+                            <button onclick="hideWaterSourceDetails()" class="w-full py-3 px-4 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium">
+                                ✕ Close Details
+                            </button>
                         </div>
                     </div>
                 `;
-                
-                marker.setPopupContent(popupContent);
             })
             .catch(error => {
                 console.error('Error loading water source details:', error);
-                marker.setPopupContent('Error loading details');
+                detailsContent.innerHTML = '<div class="text-center py-8 text-red-600">Error loading details. Please try again.</div>';
             });
+        }
+
+        // Hide the details panel
+        function hideWaterSourceDetails() {
+            document.getElementById('detailsPanel').classList.add('hidden');
+        }
+
+        // Get CSS class for quality badge
+        function getQualityBadgeClass(quality) {
+            switch(quality) {
+                case 'clean':
+                    return 'bg-green-100 text-green-800';
+                case 'muddy':
+                    return 'bg-yellow-100 text-yellow-800';
+                case 'contaminated':
+                    return 'bg-red-100 text-red-800';
+                default:
+                    return 'bg-gray-100 text-gray-800';
+            }
         }
 
         // Vote on water source
@@ -768,11 +858,8 @@ HTML_TEMPLATE = '''
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Refresh the popup to show updated votes
-                    const marker = waterSourceMarkers.find(m => m._popup && m._popup.isOpen());
-                    if (marker) {
-                        loadWaterSourceDetails(sourceId, marker);
-                    }
+                    // Refresh the details panel to show updated votes
+                    showWaterSourceDetails(sourceId);
                 } else {
                     alert('Error voting: ' + data.error);
                 }
@@ -805,12 +892,8 @@ HTML_TEMPLATE = '''
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Clear comment text and refresh popup
-                    document.getElementById(`commentText_${sourceId}`).value = '';
-                    const marker = waterSourceMarkers.find(m => m._popup && m._popup.isOpen());
-                    if (marker) {
-                        loadWaterSourceDetails(sourceId, marker);
-                    }
+                    // Refresh the details panel to show new comment
+                    showWaterSourceDetails(sourceId);
                 } else {
                     alert('Error adding comment: ' + data.error);
                 }
