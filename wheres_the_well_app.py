@@ -152,113 +152,16 @@ HTML_TEMPLATE = '''
         .water-marker-muddy { background-color: #f59e0b; }
         .water-marker-contaminated { background-color: #ef4444; }
         .user-location { background-color: #3b82f6; }
-        
-        /* Animated background for login page */
-        .animated-bg {
-            background: linear-gradient(-45deg, #1e40af, #3b82f6, #60a5fa, #93c5fd);
-            background-size: 400% 400%;
-            animation: gradientShift 15s ease infinite;
-        }
-        
-        @keyframes gradientShift {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-        }
-        
-        .floating-shape {
-            position: absolute;
-            opacity: 0.1;
-            animation: float 6s ease-in-out infinite;
-        }
-        
-        .floating-shape:nth-child(1) {
-            top: 20%;
-            left: 10%;
-            width: 80px;
-            height: 80px;
-            animation-delay: 0s;
-        }
-        
-        .floating-shape:nth-child(2) {
-            top: 60%;
-            right: 10%;
-            width: 120px;
-            height: 120px;
-            animation-delay: 2s;
-        }
-        
-        .floating-shape:nth-child(3) {
-            bottom: 20%;
-            left: 20%;
-            width: 60px;
-            height: 60px;
-            animation-delay: 4s;
-        }
-        
-        .floating-shape:nth-child(4) {
-            top: 30%;
-            right: 30%;
-            width: 40px;
-            height: 40px;
-            animation-delay: 1s;
-        }
-        
-        .floating-shape:nth-child(5) {
-            bottom: 40%;
-            right: 20%;
-            width: 100px;
-            height: 100px;
-            animation-delay: 3s;
-        }
-        
-        @keyframes float {
-            0%, 100% { transform: translateY(0px) rotate(0deg); }
-            33% { transform: translateY(-20px) rotate(120deg); }
-            66% { transform: translateY(10px) rotate(240deg); }
-        }
-        
-        .pulse-ring {
-            position: absolute;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
-            animation: pulse 3s ease-out infinite;
-        }
-        
-        @keyframes pulse {
-            0% {
-                transform: scale(0.8);
-                opacity: 1;
-            }
-            100% {
-                transform: scale(2.5);
-                opacity: 0;
-            }
-        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
     <!-- Login Page -->
-    <div id="loginPage" class="fixed inset-0 animated-bg flex items-center justify-center z-50">
-        <!-- Floating shapes -->
-        <div class="floating-shape bg-white rounded-full"></div>
-        <div class="floating-shape bg-white rounded-lg"></div>
-        <div class="floating-shape bg-white rounded-full"></div>
-        <div class="floating-shape bg-white rounded-lg transform rotate-45"></div>
-        <div class="floating-shape bg-white rounded-full"></div>
-        
-        <div class="w-full h-full flex items-center justify-center p-4 relative">
-            <div class="bg-white rounded-2xl shadow-2xl p-12 max-w-md w-full relative overflow-hidden">
-                <!-- Pulse rings behind logo -->
-                <div class="absolute top-16 left-1/2 transform -translate-x-1/2">
-                    <div class="pulse-ring w-16 h-16"></div>
-                    <div class="pulse-ring w-16 h-16" style="animation-delay: 1s;"></div>
-                    <div class="pulse-ring w-16 h-16" style="animation-delay: 2s;"></div>
-                </div>
-                
-                <div class="text-center mb-8 relative">
-                    <div class="mb-6 relative">
-                        <svg class="w-16 h-16 mx-auto text-blue-600 relative z-10" fill="currentColor" viewBox="0 0 20 20">
+    <div id="loginPage" class="fixed inset-0 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 flex items-center justify-center z-50">
+        <div class="w-full h-full flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl shadow-2xl p-12 max-w-md w-full">
+                <div class="text-center mb-8">
+                    <div class="mb-6">
+                        <svg class="w-16 h-16 mx-auto text-blue-600" fill="currentColor" viewBox="0 0 20 20">
                             <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"></path>
                         </svg>
                     </div>
@@ -267,29 +170,29 @@ HTML_TEMPLATE = '''
                 </div>
                 
                 <form id="loginForm" class="space-y-6">
-                    <div class="transform transition-all duration-300 hover:scale-105">
+                    <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Username</label>
-                        <input type="text" id="usernameInput" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition transform focus:scale-105" placeholder="Enter your username" required>
+                        <input type="text" id="usernameInput" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" placeholder="Enter your username" required>
                     </div>
                     
-                    <div class="transform transition-all duration-300 hover:scale-105">
+                    <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
-                        <input type="password" id="passwordInput" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition transform focus:scale-105" placeholder="Enter your password" required>
+                        <input type="password" id="passwordInput" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" placeholder="Enter your password" required>
                     </div>
                     
-                    <button type="submit" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition font-medium text-lg transform hover:scale-105 shadow-lg hover:shadow-xl">
+                    <button type="submit" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition font-medium text-lg">
                         🚀 Sign In
                     </button>
                 </form>
                 
                 <div class="mt-8 text-center">
                     <div class="flex items-center justify-center space-x-4 text-sm text-gray-500">
-                        <div class="flex items-center transform hover:scale-110 transition">
-                            <div class="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
+                        <div class="flex items-center">
+                            <div class="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
                             <span>Offline Ready</span>
                         </div>
-                        <div class="flex items-center transform hover:scale-110 transition">
-                            <div class="w-2 h-2 bg-blue-500 rounded-full mr-2 animate-pulse" style="animation-delay: 0.5s;"></div>
+                        <div class="flex items-center">
+                            <div class="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
                             <span>Community Driven</span>
                         </div>
                     </div>
@@ -320,7 +223,7 @@ HTML_TEMPLATE = '''
     </header>
 
     <!-- Main Content -->
-    <div class="container mx-auto px-4 py-8" style="display: none;">
+    <div class="container mx-auto px-4 py-8">
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
             
             <!-- Map Column -->
@@ -476,13 +379,9 @@ HTML_TEMPLATE = '''
             if (currentUsername) {
                 document.getElementById('currentUsername').textContent = currentUsername;
                 document.getElementById('loginPage').style.display = 'none';
-                document.querySelector('.container').style.display = 'block';
                 initMap();
             } else {
                 document.getElementById('loginPage').style.display = 'block';
-                if (document.querySelector('.container')) {
-                    document.querySelector('.container').style.display = 'none';
-                }
             }
         }
 
@@ -497,7 +396,6 @@ HTML_TEMPLATE = '''
                 localStorage.setItem('wheres_the_well_username', username);
                 document.getElementById('currentUsername').textContent = username;
                 document.getElementById('loginPage').style.display = 'none';
-                document.querySelector('.container').style.display = 'block';
                 initMap();
             } else {
                 alert('Please enter both username and password');
@@ -506,61 +404,9 @@ HTML_TEMPLATE = '''
 
         // Logout function
         function logout() {
-            // Clear user data
             localStorage.removeItem('wheres_the_well_username');
             currentUsername = null;
-            userLocation = null;
-            
-            // Clean up map and markers
-            if (map) {
-                // Remove all markers
-                if (userLocationMarker) {
-                    map.removeLayer(userLocationMarker);
-                    userLocationMarker = null;
-                }
-                
-                if (window.tempMarker) {
-                    map.removeLayer(window.tempMarker);
-                    window.tempMarker = null;
-                }
-                
-                waterSourceMarkers.forEach(marker => map.removeLayer(marker));
-                waterSourceMarkers = [];
-                
-                // Remove the map completely
-                map.remove();
-                map = null;
-            }
-            
-            // Reset global variables
-            selectedLatLng = null;
-            currentPhotoData = null;
-            
-            // Hide main content and show login page
-            document.querySelector('.container').style.display = 'none';
             document.getElementById('loginPage').style.display = 'block';
-            
-            // Hide details panel
-            document.getElementById('detailsPanel').classList.add('hidden');
-            
-            // Reset nearby sources container
-            document.getElementById('nearbySourcesContainer').innerHTML = `
-                <div class="text-center py-8 text-gray-500">
-                    <svg class="w-12 h-12 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                    </svg>
-                    <p>Click "Find Me" to see nearby water sources</p>
-                </div>
-            `;
-            
-            // Reset forms
-            document.getElementById('waterSourceForm').reset();
-            document.getElementById('photoPreview').classList.add('hidden');
-            document.getElementById('latitude').value = '';
-            document.getElementById('longitude').value = '';
-            
-            // Clear login form
             document.getElementById('usernameInput').value = '';
             document.getElementById('passwordInput').value = '';
         }
