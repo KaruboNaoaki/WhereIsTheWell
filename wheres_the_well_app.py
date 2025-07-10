@@ -21,6 +21,8 @@ app = Flask(__name__)
 def init_db():
     conn = sqlite3.connect('water_sources.db')
     cursor = conn.cursor()
+    
+    # Water sources table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS water_sources (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,9 +34,36 @@ def init_db():
             confidence_score REAL,
             notes TEXT,
             photo_data TEXT,
+            added_by TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    
+    # Votes table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS votes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            water_source_id INTEGER,
+            username TEXT NOT NULL,
+            vote_type TEXT CHECK(vote_type IN ('upvote', 'downvote')),
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (water_source_id) REFERENCES water_sources (id),
+            UNIQUE(water_source_id, username)
+        )
+    ''')
+    
+    # Comments table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            water_source_id INTEGER,
+            username TEXT NOT NULL,
+            comment TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (water_source_id) REFERENCES water_sources (id)
+        )
+    ''')
+    
     conn.commit()
     conn.close()
 
@@ -126,16 +155,44 @@ HTML_TEMPLATE = '''
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
+    <!-- Login Modal -->
+    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4">
+            <div class="text-center">
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Welcome to Where's the Well?</h2>
+                <p class="text-gray-600 mb-6">Please enter your name to start mapping water sources</p>
+                
+                <form id="loginForm" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Your Name</label>
+                        <input type="text" id="usernameInput" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Enter your name" required>
+                    </div>
+                    <button type="submit" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition font-medium">
+                        🚀 Start Mapping
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Header -->
     <header class="bg-blue-600 text-white shadow-lg">
         <div class="container mx-auto px-4 py-6">
-            <h1 class="text-3xl font-bold flex items-center">
-                <svg class="w-8 h-8 mr-3" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"></path>
-                </svg>
-                Where's the Well?
-            </h1>
-            <p class="text-blue-100 mt-2">Interactive Water Source Locator</p>
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-3xl font-bold flex items-center">
+                        <svg class="w-8 h-8 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"></path>
+                        </svg>
+                        Where's the Well?
+                    </h1>
+                    <p class="text-blue-100 mt-2">Interactive Water Source Locator</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-blue-100">Welcome, <span id="currentUsername" class="font-semibold"></span>!</p>
+                    <button onclick="logout()" class="text-blue-200 hover:text-white text-sm underline">Change User</button>
+                </div>
+            </div>
         </div>
     </header>
 
@@ -281,6 +338,45 @@ HTML_TEMPLATE = '''
         let waterSourceMarkers = [];
         let selectedLatLng = null;
         let currentPhotoData = null;
+        let currentUsername = null;
+
+        // Initialize app when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            checkLogin();
+        });
+
+        // Check if user is logged in
+        function checkLogin() {
+            currentUsername = localStorage.getItem('wheres_the_well_username');
+            if (currentUsername) {
+                document.getElementById('currentUsername').textContent = currentUsername;
+                document.getElementById('loginModal').style.display = 'none';
+                initMap();
+            } else {
+                document.getElementById('loginModal').style.display = 'flex';
+            }
+        }
+
+        // Handle login
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const username = document.getElementById('usernameInput').value.trim();
+            if (username) {
+                currentUsername = username;
+                localStorage.setItem('wheres_the_well_username', username);
+                document.getElementById('currentUsername').textContent = username;
+                document.getElementById('loginModal').style.display = 'none';
+                initMap();
+            }
+        });
+
+        // Logout function
+        function logout() {
+            localStorage.removeItem('wheres_the_well_username');
+            currentUsername = null;
+            document.getElementById('loginModal').style.display = 'flex';
+            document.getElementById('usernameInput').value = '';
+        }
 
         // Initialize map
         function initMap() {
@@ -436,7 +532,8 @@ HTML_TEMPLATE = '''
                 longitude: selectedLatLng.lng,
                 water_type: document.getElementById('waterType').value,
                 notes: document.getElementById('notes').value,
-                photo_data: currentPhotoData
+                photo_data: currentPhotoData,
+                added_by: currentUsername
             };
             
             fetch('/add_water_source', {
@@ -533,18 +630,163 @@ HTML_TEMPLATE = '''
             
             const confidence = source.confidence_score ? (source.confidence_score * 100).toFixed(1) : 'N/A';
             
-            marker.bindPopup(`
-                <div class="p-2">
-                    <h4 class="font-bold text-lg">${source.name}</h4>
-                    <p><strong>Type:</strong> ${source.water_type}</p>
-                    <p><strong>Quality:</strong> ${source.cleanliness_level} (${confidence}% confidence)</p>
-                    <p><strong>Location:</strong> ${source.latitude.toFixed(4)}, ${source.longitude.toFixed(4)}</p>
-                    ${source.notes ? `<p><strong>Notes:</strong> ${source.notes}</p>` : ''}
-                    <p class="text-sm text-gray-500 mt-2">${new Date(source.timestamp).toLocaleDateString()}</p>
-                </div>
-            `);
+            // Create detailed popup with voting and comments
+            marker.bindPopup('Loading...', {
+                maxWidth: 350,
+                className: 'water-source-popup'
+            });
+            
+            marker.on('click', function() {
+                loadWaterSourceDetails(source.id, marker);
+            });
             
             return marker;
+        }
+
+        // Load detailed water source information with votes and comments
+        function loadWaterSourceDetails(sourceId, marker) {
+            Promise.all([
+                fetch(`/get_water_source_details/${sourceId}`).then(r => r.json()),
+                fetch(`/get_votes/${sourceId}`).then(r => r.json()),
+                fetch(`/get_comments/${sourceId}`).then(r => r.json())
+            ])
+            .then(([source, votes, comments]) => {
+                const confidence = source.confidence_score ? (source.confidence_score * 100).toFixed(1) : 'N/A';
+                const upvotes = votes.filter(v => v.vote_type === 'upvote').length;
+                const downvotes = votes.filter(v => v.vote_type === 'downvote').length;
+                const userVote = votes.find(v => v.username === currentUsername);
+                
+                const popupContent = `
+                    <div class="p-3 max-w-sm">
+                        <h4 class="font-bold text-lg mb-2">${source.name}</h4>
+                        <div class="space-y-2 text-sm">
+                            <p><strong>Type:</strong> ${source.water_type}</p>
+                            <p><strong>Quality:</strong> ${source.cleanliness_level} (${confidence}% confidence)</p>
+                            <p><strong>Added by:</strong> ${source.added_by}</p>
+                            <p><strong>Location:</strong> ${source.latitude.toFixed(4)}, ${source.longitude.toFixed(4)}</p>
+                            ${source.notes ? `<p><strong>Notes:</strong> ${source.notes}</p>` : ''}
+                        </div>
+                        
+                        <!-- Voting Section -->
+                        <div class="mt-4 pt-3 border-t border-gray-200">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="font-medium text-gray-700">Community Feedback</span>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-green-600">👍 ${upvotes}</span>
+                                    <span class="text-red-600">👎 ${downvotes}</span>
+                                </div>
+                            </div>
+                            <div class="flex space-x-2 mb-3">
+                                <button onclick="vote(${sourceId}, 'upvote')" class="flex-1 py-2 px-3 rounded text-sm font-medium transition ${userVote?.vote_type === 'upvote' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-green-100'}">
+                                    👍 Accurate
+                                </button>
+                                <button onclick="vote(${sourceId}, 'downvote')" class="flex-1 py-2 px-3 rounded text-sm font-medium transition ${userVote?.vote_type === 'downvote' ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-red-100'}">
+                                    👎 Inaccurate
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Comments Section -->
+                        <div class="mt-4 pt-3 border-t border-gray-200">
+                            <div class="mb-3">
+                                <textarea id="commentText_${sourceId}" placeholder="Add a comment..." class="w-full px-2 py-1 text-sm border border-gray-300 rounded resize-none" rows="2"></textarea>
+                                <button onclick="addComment(${sourceId})" class="mt-2 w-full py-1 px-3 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition">
+                                    💬 Add Comment
+                                </button>
+                            </div>
+                            
+                            <div class="space-y-2 max-h-32 overflow-y-auto">
+                                ${comments.map(comment => `
+                                    <div class="bg-gray-50 p-2 rounded text-xs">
+                                        <div class="font-medium text-gray-800">${comment.username}</div>
+                                        <div class="text-gray-600">${comment.comment}</div>
+                                        <div class="text-gray-400 text-xs mt-1">${new Date(comment.timestamp).toLocaleDateString()}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        
+                        <div class="text-xs text-gray-500 mt-3 pt-2 border-t border-gray-200">
+                            Added on ${new Date(source.timestamp).toLocaleDateString()}
+                        </div>
+                    </div>
+                `;
+                
+                marker.setPopupContent(popupContent);
+            })
+            .catch(error => {
+                console.error('Error loading water source details:', error);
+                marker.setPopupContent('Error loading details');
+            });
+        }
+
+        // Vote on water source
+        function vote(sourceId, voteType) {
+            fetch('/vote', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    water_source_id: sourceId,
+                    username: currentUsername,
+                    vote_type: voteType
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Refresh the popup to show updated votes
+                    const marker = waterSourceMarkers.find(m => m._popup && m._popup.isOpen());
+                    if (marker) {
+                        loadWaterSourceDetails(sourceId, marker);
+                    }
+                } else {
+                    alert('Error voting: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error voting:', error);
+                alert('Error submitting vote');
+            });
+        }
+
+        // Add comment to water source
+        function addComment(sourceId) {
+            const commentText = document.getElementById(`commentText_${sourceId}`).value.trim();
+            if (!commentText) {
+                alert('Please enter a comment');
+                return;
+            }
+            
+            fetch('/add_comment', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    water_source_id: sourceId,
+                    username: currentUsername,
+                    comment: commentText
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Clear comment text and refresh popup
+                    document.getElementById(`commentText_${sourceId}`).value = '';
+                    const marker = waterSourceMarkers.find(m => m._popup && m._popup.isOpen());
+                    if (marker) {
+                        loadWaterSourceDetails(sourceId, marker);
+                    }
+                } else {
+                    alert('Error adding comment: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error adding comment:', error);
+                alert('Error submitting comment');
+            });
         }
 
         // Update statistics
@@ -558,11 +800,6 @@ HTML_TEMPLATE = '''
             document.getElementById('muddyCount').textContent = stats.muddy || 0;
             document.getElementById('contaminatedCount').textContent = stats.contaminated || 0;
         }
-
-        // Initialize app when page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            initMap();
-        });
     </script>
 </body>
 </html>
@@ -606,8 +843,8 @@ def add_water_source():
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO water_sources 
-            (name, latitude, longitude, water_type, cleanliness_level, confidence_score, notes, photo_data)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (name, latitude, longitude, water_type, cleanliness_level, confidence_score, notes, photo_data, added_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             data['name'],
             data['latitude'],
@@ -616,7 +853,8 @@ def add_water_source():
             cleanliness_level,
             confidence_score,
             data.get('notes', ''),
-            data.get('photo_data', '')
+            data.get('photo_data', ''),
+            data.get('added_by', 'Anonymous')
         ))
         conn.commit()
         conn.close()
@@ -643,13 +881,133 @@ def get_water_sources():
                 'cleanliness_level': row[5],
                 'confidence_score': row[6],
                 'notes': row[7],
-                'timestamp': row[9]
+                'added_by': row[9],
+                'timestamp': row[10]
             })
         
         conn.close()
         return jsonify(sources)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/get_water_source_details/<int:source_id>')
+def get_water_source_details(source_id):
+    try:
+        conn = sqlite3.connect('water_sources.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM water_sources WHERE id = ?', (source_id,))
+        
+        row = cursor.fetchone()
+        if row:
+            source = {
+                'id': row[0],
+                'name': row[1],
+                'latitude': row[2],
+                'longitude': row[3],
+                'water_type': row[4],
+                'cleanliness_level': row[5],
+                'confidence_score': row[6],
+                'notes': row[7],
+                'added_by': row[9],
+                'timestamp': row[10]
+            }
+            conn.close()
+            return jsonify(source)
+        else:
+            conn.close()
+            return jsonify({'error': 'Water source not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/get_votes/<int:source_id>')
+def get_votes(source_id):
+    try:
+        conn = sqlite3.connect('water_sources.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM votes WHERE water_source_id = ?', (source_id,))
+        
+        votes = []
+        for row in cursor.fetchall():
+            votes.append({
+                'id': row[0],
+                'water_source_id': row[1],
+                'username': row[2],
+                'vote_type': row[3],
+                'timestamp': row[4]
+            })
+        
+        conn.close()
+        return jsonify(votes)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/get_comments/<int:source_id>')
+def get_comments(source_id):
+    try:
+        conn = sqlite3.connect('water_sources.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM comments WHERE water_source_id = ? ORDER BY timestamp DESC', (source_id,))
+        
+        comments = []
+        for row in cursor.fetchall():
+            comments.append({
+                'id': row[0],
+                'water_source_id': row[1],
+                'username': row[2],
+                'comment': row[3],
+                'timestamp': row[4]
+            })
+        
+        conn.close()
+        return jsonify(comments)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/vote', methods=['POST'])
+def vote():
+    try:
+        data = request.get_json()
+        water_source_id = data['water_source_id']
+        username = data['username']
+        vote_type = data['vote_type']
+        
+        conn = sqlite3.connect('water_sources.db')
+        cursor = conn.cursor()
+        
+        # Replace existing vote or insert new one
+        cursor.execute('''
+            INSERT OR REPLACE INTO votes (water_source_id, username, vote_type)
+            VALUES (?, ?, ?)
+        ''', (water_source_id, username, vote_type))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/add_comment', methods=['POST'])
+def add_comment():
+    try:
+        data = request.get_json()
+        water_source_id = data['water_source_id']
+        username = data['username']
+        comment = data['comment']
+        
+        conn = sqlite3.connect('water_sources.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO comments (water_source_id, username, comment)
+            VALUES (?, ?, ?)
+        ''', (water_source_id, username, comment))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     # Initialize database
