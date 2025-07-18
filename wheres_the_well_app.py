@@ -411,18 +411,18 @@ HTML_TEMPLATE = '''
                     </div>
                 </div>
 
-                <!-- Alerts Near Me (Admin Only) -->
-                <div id="alertsSection" class="bg-white rounded-xl shadow-lg p-6" style="display: none;">
+                <!-- Alerts Near Me -->
+                <div id="alertsSection" class="bg-white rounded-xl shadow-lg p-6">
                     <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
                         <svg class="w-5 h-5 mr-2 text-red-500" fill="currentColor" viewBox="0 0 20 20">
                             <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
                         </svg>
                         Alerts Near Me
-                        <span class="ml-2 px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">ADMIN</span>
+                        <span id="adminBadge" class="ml-2 px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full" style="display: none;">ADMIN</span>
                     </h3>
                     
-                    <!-- Add Alert Form -->
-                    <div class="mb-4 p-3 bg-red-50 rounded-lg">
+                    <!-- Add Alert Form (Admin Only) -->
+                    <div id="adminAlertForm" class="mb-4 p-3 bg-red-50 rounded-lg" style="display: none;">
                         <h4 class="font-medium text-gray-800 mb-2">Add New Alert</h4>
                         <div class="mb-2">
                             <button id="alertModeToggle" onclick="toggleAlertMode()" class="px-3 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 transition">
@@ -444,7 +444,7 @@ HTML_TEMPLATE = '''
                     
                     <div id="alertsContainer" class="space-y-3">
                         <div class="text-center py-4 text-gray-500">
-                            <p class="text-sm">No alerts in your area</p>
+                            <p class="text-sm">Click "Find Me" to see nearby alerts</p>
                         </div>
                     </div>
                 </div>
@@ -480,9 +480,13 @@ HTML_TEMPLATE = '''
                 document.getElementById('loginPage').style.display = 'none';
                 document.getElementById('mainContent').style.display = 'block';
                 
-                // Show admin sections if admin
+                // Show alerts section for all users
+                document.getElementById('alertsSection').style.display = 'block';
+                
+                // Show admin-specific sections if admin
                 if (isAdmin) {
-                    document.getElementById('alertsSection').style.display = 'block';
+                    document.getElementById('adminAlertForm').style.display = 'block';
+                    document.getElementById('adminBadge').style.display = 'inline-block';
                 }
                 
                 initMap();
@@ -506,9 +510,13 @@ HTML_TEMPLATE = '''
                 document.getElementById('loginPage').style.display = 'none';
                 document.getElementById('mainContent').style.display = 'block';
                 
-                // Show admin sections if admin
+                // Show alerts section for all users
+                document.getElementById('alertsSection').style.display = 'block';
+                
+                // Show admin-specific sections if admin
                 if (isAdmin) {
-                    document.getElementById('alertsSection').style.display = 'block';
+                    document.getElementById('adminAlertForm').style.display = 'block';
+                    document.getElementById('adminBadge').style.display = 'inline-block';
                 }
                 
                 initMap();
@@ -557,6 +565,8 @@ HTML_TEMPLATE = '''
             // Hide main content and admin sections
             document.getElementById('mainContent').style.display = 'none';
             document.getElementById('alertsSection').style.display = 'none';
+            document.getElementById('adminAlertForm').style.display = 'none';
+            document.getElementById('adminBadge').style.display = 'none';
             document.getElementById('detailsPanel').classList.add('hidden');
             
             // Reset containers
@@ -572,7 +582,7 @@ HTML_TEMPLATE = '''
             
             document.getElementById('alertsContainer').innerHTML = `
                 <div class="text-center py-4 text-gray-500">
-                    <p class="text-sm">No alerts in your area</p>
+                    <p class="text-sm">Click "Find Me" to see nearby alerts</p>
                 </div>
             `;
             
@@ -682,10 +692,8 @@ HTML_TEMPLATE = '''
                         // Update nearby sources list
                         updateNearbyWaterSources();
                         
-                        // Update alerts if admin
-                        if (isAdmin) {
-                            updateAlertsNearMe();
-                        }
+                        // Update alerts for all users
+                        updateAlertsNearMe();
                     },
                     function(error) {
                         console.log("Geolocation error:", error);
@@ -846,10 +854,8 @@ HTML_TEMPLATE = '''
                 console.error('Error loading water sources:', error);
             });
             
-            // Load alerts if admin
-            if (isAdmin) {
-                loadAlerts();
-            }
+            // Load alerts for all users
+            loadAlerts();
         }
 
         // Create marker for water source
@@ -1194,10 +1200,8 @@ HTML_TEMPLATE = '''
             });
         }
 
-        // Load alerts for admin
+        // Load alerts for all users
         function loadAlerts() {
-            if (!isAdmin) return;
-            
             fetch('/get_alerts')
             .then(response => response.json())
             .then(data => {
@@ -1245,8 +1249,6 @@ HTML_TEMPLATE = '''
 
         // Update alerts near me list
         function updateAlertsNearMe(alerts = null) {
-            if (!isAdmin) return;
-            
             const container = document.getElementById('alertsContainer');
             
             if (!userLocation) {
@@ -1996,5 +1998,6 @@ if __name__ == '__main__':
     print("Starting application...")
     print("Open your browser and go to: http://localhost:5000")
 
+    
     # Run the Flask app
     app.run(debug=True, host='0.0.0.0', port=5000)
