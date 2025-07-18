@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-Where's the Well? - Interactive Water Source Locator
-A desktop application for logging and evaluating water sources offline.
-"""
-
 import os
 import sqlite3
 import base64
@@ -35,6 +29,7 @@ def init_db():
             notes TEXT,
             photo_data TEXT,
             added_by TEXT DEFAULT 'Anonymous',
+            admin_override TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -44,6 +39,8 @@ def init_db():
     columns = [column[1] for column in cursor.fetchall()]
     if 'added_by' not in columns:
         cursor.execute('ALTER TABLE water_sources ADD COLUMN added_by TEXT DEFAULT "Anonymous"')
+    if 'admin_override' not in columns:
+        cursor.execute('ALTER TABLE water_sources ADD COLUMN admin_override TEXT')
     
     # Votes table
     cursor.execute('''
@@ -65,8 +62,29 @@ def init_db():
             water_source_id INTEGER,
             username TEXT NOT NULL,
             comment TEXT NOT NULL,
+            is_admin BOOLEAN DEFAULT FALSE,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (water_source_id) REFERENCES water_sources (id)
+        )
+    ''')
+    
+    # Check if is_admin column exists in comments, add it if not
+    cursor.execute("PRAGMA table_info(comments)")
+    comment_columns = [column[1] for column in cursor.fetchall()]
+    if 'is_admin' not in comment_columns:
+        cursor.execute('ALTER TABLE comments ADD COLUMN is_admin BOOLEAN DEFAULT FALSE')
+    
+    # Alerts table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS alerts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            latitude REAL NOT NULL,
+            longitude REAL NOT NULL,
+            alert_type TEXT DEFAULT 'warning',
+            added_by TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     
@@ -262,7 +280,7 @@ HTML_TEMPLATE = '''
     </header>
 
     <!-- Main Content -->
-    <div class="container mx-auto px-4 py-8">
+    <div id="mainContent" class="container mx-auto px-4 py-8" style="display: none;">
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
             
             <!-- Map Column -->
@@ -393,6 +411,38 @@ HTML_TEMPLATE = '''
                     </div>
                 </div>
 
+                <!-- Alerts Near Me (Admin Only) -->
+                <div id="alertsSection" class="bg-white rounded-xl shadow-lg p-6" style="display: none;">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                        <svg class="w-5 h-5 mr-2 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                        </svg>
+                        Alerts Near Me
+                        <span class="ml-2 px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">ADMIN</span>
+                    </h3>
+                    
+                    <!-- Add Alert Form -->
+                    <div class="mb-4 p-3 bg-red-50 rounded-lg">
+                        <h4 class="font-medium text-gray-800 mb-2">Add New Alert</h4>
+                        <form id="alertForm" class="space-y-2">
+                            <input type="text" id="alertTitle" placeholder="Alert title..." class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500" required>
+                            <textarea id="alertMessage" placeholder="Alert message..." rows="2" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none" required></textarea>
+                            <input type="hidden" id="alertLatitude">
+                            <input type="hidden" id="alertLongitude">
+                            <button type="submit" class="w-full py-2 px-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium text-sm">
+                                🚨 Add Alert to Map
+                            </button>
+                        </form>
+                        <p class="text-xs text-gray-500 mt-2">Click on the map to set alert location</p>
+                    </div>
+                    
+                    <div id="alertsContainer" class="space-y-3">
+                        <div class="text-center py-4 text-gray-500">
+                            <p class="text-sm">No alerts in your area</p>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -402,10 +452,13 @@ HTML_TEMPLATE = '''
         let map;
         let userLocationMarker;
         let waterSourceMarkers = [];
+        let alertMarkers = [];
         let selectedLatLng = null;
         let currentPhotoData = null;
         let currentUsername = null;
-        let userLocation = null; // Store user's current location
+        let userLocation = null;
+        let isAdmin = false;
+        let alertMode = false;
 
         // Initialize app when page loads
         document.addEventListener('DOMContentLoaded', function() {
@@ -416,11 +469,20 @@ HTML_TEMPLATE = '''
         function checkLogin() {
             currentUsername = localStorage.getItem('wheres_the_well_username');
             if (currentUsername) {
-                document.getElementById('currentUsername').textContent = currentUsername;
+                isAdmin = currentUsername.toLowerCase() === 'admin';
+                document.getElementById('currentUsername').textContent = currentUsername + (isAdmin ? ' (Admin)' : '');
                 document.getElementById('loginPage').style.display = 'none';
+                document.getElementById('mainContent').style.display = 'block';
+                
+                // Show admin sections if admin
+                if (isAdmin) {
+                    document.getElementById('alertsSection').style.display = 'block';
+                }
+                
                 initMap();
             } else {
                 document.getElementById('loginPage').style.display = 'block';
+                document.getElementById('mainContent').style.display = 'none';
             }
         }
 
@@ -432,9 +494,17 @@ HTML_TEMPLATE = '''
             
             if (username && password) {
                 currentUsername = username;
+                isAdmin = username.toLowerCase() === 'admin';
                 localStorage.setItem('wheres_the_well_username', username);
-                document.getElementById('currentUsername').textContent = username;
+                document.getElementById('currentUsername').textContent = username + (isAdmin ? ' (Admin)' : '');
                 document.getElementById('loginPage').style.display = 'none';
+                document.getElementById('mainContent').style.display = 'block';
+                
+                // Show admin sections if admin
+                if (isAdmin) {
+                    document.getElementById('alertsSection').style.display = 'block';
+                }
+                
                 initMap();
             } else {
                 alert('Please enter both username and password');
@@ -443,8 +513,70 @@ HTML_TEMPLATE = '''
 
         // Logout function
         function logout() {
+            // Clear user data
             localStorage.removeItem('wheres_the_well_username');
             currentUsername = null;
+            userLocation = null;
+            isAdmin = false;
+            alertMode = false;
+            
+            // Clean up map and markers
+            if (map) {
+                // Remove all markers
+                if (userLocationMarker) {
+                    map.removeLayer(userLocationMarker);
+                    userLocationMarker = null;
+                }
+                
+                if (window.tempMarker) {
+                    map.removeLayer(window.tempMarker);
+                    window.tempMarker = null;
+                }
+                
+                waterSourceMarkers.forEach(marker => map.removeLayer(marker));
+                waterSourceMarkers = [];
+                
+                alertMarkers.forEach(marker => map.removeLayer(marker));
+                alertMarkers = [];
+                
+                // Remove the map completely
+                map.remove();
+                map = null;
+            }
+            
+            // Reset global variables
+            selectedLatLng = null;
+            currentPhotoData = null;
+            
+            // Hide main content and admin sections
+            document.getElementById('mainContent').style.display = 'none';
+            document.getElementById('alertsSection').style.display = 'none';
+            document.getElementById('detailsPanel').classList.add('hidden');
+            
+            // Reset containers
+            document.getElementById('nearbySourcesContainer').innerHTML = `
+                <div class="text-center py-8 text-gray-500">
+                    <svg class="w-12 h-12 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                    <p>Click "Find Me" to see nearby water sources</p>
+                </div>
+            `;
+            
+            document.getElementById('alertsContainer').innerHTML = `
+                <div class="text-center py-4 text-gray-500">
+                    <p class="text-sm">No alerts in your area</p>
+                </div>
+            `;
+            
+            // Reset forms
+            document.getElementById('waterSourceForm').reset();
+            document.getElementById('photoPreview').classList.add('hidden');
+            document.getElementById('latitude').value = '';
+            document.getElementById('longitude').value = '';
+            
+            // Show login page
             document.getElementById('loginPage').style.display = 'block';
             document.getElementById('usernameInput').value = '';
             document.getElementById('passwordInput').value = '';
@@ -463,20 +595,40 @@ HTML_TEMPLATE = '''
                 attribution: '© OpenStreetMap contributors'
             }).addTo(map);
 
-            // Add click event for placing water sources
+            // Add click event for placing water sources or alerts
             map.on('click', function(e) {
-                selectedLatLng = e.latlng;
-                document.getElementById('latitude').value = e.latlng.lat.toFixed(6);
-                document.getElementById('longitude').value = e.latlng.lng.toFixed(6);
-                
-                // Show temporary marker
-                if (window.tempMarker) {
-                    map.removeLayer(window.tempMarker);
+                if (isAdmin && alertMode) {
+                    // Admin placing an alert
+                    document.getElementById('alertLatitude').value = e.latlng.lat.toFixed(6);
+                    document.getElementById('alertLongitude').value = e.latlng.lng.toFixed(6);
+                    
+                    // Show temporary alert marker
+                    if (window.tempAlertMarker) {
+                        map.removeLayer(window.tempAlertMarker);
+                    }
+                    window.tempAlertMarker = L.marker([e.latlng.lat, e.latlng.lng], {
+                        icon: L.divIcon({
+                            className: 'alert-marker',
+                            html: '<div style="background-color: #ef4444; color: white; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2); font-size: 16px;">🚨</div>',
+                            iconSize: [30, 30],
+                            iconAnchor: [15, 15]
+                        })
+                    }).addTo(map).bindPopup("📍 New alert location").openPopup();
+                } else {
+                    // Regular water source placement
+                    selectedLatLng = e.latlng;
+                    document.getElementById('latitude').value = e.latlng.lat.toFixed(6);
+                    document.getElementById('longitude').value = e.latlng.lng.toFixed(6);
+                    
+                    // Show temporary marker
+                    if (window.tempMarker) {
+                        map.removeLayer(window.tempMarker);
+                    }
+                    window.tempMarker = L.marker([e.latlng.lat, e.latlng.lng])
+                        .addTo(map)
+                        .bindPopup("📍 New water source location")
+                        .openPopup();
                 }
-                window.tempMarker = L.marker([e.latlng.lat, e.latlng.lng])
-                    .addTo(map)
-                    .bindPopup("📍 New water source location")
-                    .openPopup();
             });
 
             // Try to get user's current location
@@ -516,6 +668,11 @@ HTML_TEMPLATE = '''
                         
                         // Update nearby sources list
                         updateNearbyWaterSources();
+                        
+                        // Update alerts if admin
+                        if (isAdmin) {
+                            updateAlertsNearMe();
+                        }
                     },
                     function(error) {
                         console.log("Geolocation error:", error);
@@ -675,12 +832,18 @@ HTML_TEMPLATE = '''
             .catch(error => {
                 console.error('Error loading water sources:', error);
             });
+            
+            // Load alerts if admin
+            if (isAdmin) {
+                loadAlerts();
+            }
         }
 
         // Create marker for water source
         function createWaterSourceMarker(source) {
+            const displayQuality = source.admin_override || source.cleanliness_level;
             let color, emoji;
-            switch(source.cleanliness_level) {
+            switch(displayQuality) {
                 case 'clean':
                     color = '#10b981';
                     emoji = '💧';
@@ -708,13 +871,16 @@ HTML_TEMPLATE = '''
             });
             
             const confidence = source.confidence_score ? (source.confidence_score * 100).toFixed(1) : 'N/A';
+            const qualityDisplay = source.admin_override ? 
+                `${displayQuality} (Admin Override)` : 
+                `${displayQuality} (${confidence}% confidence)`;
             
             // Simple popup with basic info
             marker.bindPopup(`
                 <div class="p-2">
                     <h4 class="font-bold text-lg">${source.name}</h4>
                     <p><strong>Type:</strong> ${source.water_type}</p>
-                    <p><strong>Quality:</strong> ${source.cleanliness_level} (${confidence}% confidence)</p>
+                    <p><strong>Quality:</strong> ${qualityDisplay}</p>
                     <p><strong>Added by:</strong> ${source.added_by}</p>
                     <button onclick="showWaterSourceDetails(${source.id})" class="mt-2 w-full bg-blue-500 text-white py-1 px-3 rounded text-sm hover:bg-blue-600 transition">
                         📋 View Full Details
@@ -747,6 +913,7 @@ HTML_TEMPLATE = '''
                 const upvotes = votes.filter(v => v.vote_type === 'upvote').length;
                 const downvotes = votes.filter(v => v.vote_type === 'downvote').length;
                 const userVote = votes.find(v => v.username === currentUsername);
+                const displayQuality = source.admin_override || source.cleanliness_level;
                 
                 detailsContent.innerHTML = `
                     <div class="space-y-6">
@@ -761,7 +928,10 @@ HTML_TEMPLATE = '''
                                     </div>
                                     <div>
                                         <span class="font-medium text-gray-700">Quality:</span>
-                                        <span class="ml-2 px-2 py-1 ${getQualityBadgeClass(source.cleanliness_level)} rounded text-sm">${source.cleanliness_level} (${confidence}% confidence)</span>
+                                        <span class="ml-2 px-2 py-1 ${getQualityBadgeClass(displayQuality)} rounded text-sm">
+                                            ${displayQuality} 
+                                            ${source.admin_override ? '<span class="text-xs">(Admin Override)</span>' : `(${confidence}% confidence)`}
+                                        </span>
                                     </div>
                                     <div>
                                         <span class="font-medium text-gray-700">Added by:</span>
@@ -788,6 +958,30 @@ HTML_TEMPLATE = '''
                                 </div>
                             </div>
                         </div>
+
+                        ${isAdmin ? `
+                        <!-- Admin Controls -->
+                        <div class="border-t border-gray-200 pt-6">
+                            <div class="bg-blue-50 p-4 rounded-lg">
+                                <h5 class="text-lg font-semibold text-blue-800 mb-3 flex items-center">
+                                    🛡️ Admin Controls
+                                    <span class="ml-2 px-2 py-1 bg-blue-200 text-blue-800 text-xs rounded-full">ADMIN</span>
+                                </h5>
+                                <div class="flex space-x-2 mb-3">
+                                    <button onclick="adminOverride(${sourceId}, 'clean')" class="px-3 py-2 bg-green-500 text-white rounded text-sm hover:bg-green-600 transition">
+                                        Mark as Clean
+                                    </button>
+                                    <button onclick="adminOverride(${sourceId}, 'muddy')" class="px-3 py-2 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600 transition">
+                                        Mark as Muddy
+                                    </button>
+                                    <button onclick="adminOverride(${sourceId}, 'contaminated')" class="px-3 py-2 bg-red-500 text-white rounded text-sm hover:bg-red-600 transition">
+                                        Mark as Contaminated
+                                    </button>
+                                </div>
+                                <p class="text-xs text-blue-700">Admin overrides will take precedence over automatic analysis</p>
+                            </div>
+                        </div>
+                        ` : ''}
 
                         <!-- Community Feedback Section -->
                         <div class="border-t border-gray-200 pt-6">
@@ -835,12 +1029,16 @@ HTML_TEMPLATE = '''
                             <div class="space-y-4">
                                 ${comments.length === 0 ? '<p class="text-gray-500 text-center py-4">No comments yet. Be the first to share additional information!</p>' : ''}
                                 ${comments.map(comment => `
-                                    <div class="bg-gray-50 p-4 rounded-lg">
+                                    <div class="${comment.is_admin ? 'bg-blue-50 border-l-4 border-blue-500' : 'bg-gray-50'} p-4 rounded-lg">
                                         <div class="flex items-center justify-between mb-2">
-                                            <span class="font-medium text-gray-800">${comment.username}</span>
+                                            <div class="flex items-center">
+                                                <span class="font-medium text-gray-800">${comment.username}</span>
+                                                ${comment.is_admin ? '<span class="ml-2 px-2 py-1 bg-blue-200 text-blue-800 text-xs rounded-full">ADMIN</span>' : ''}
+                                                ${comment.is_admin ? '<span class="ml-2 text-blue-600">📌</span>' : ''}
+                                            </div>
                                             <span class="text-gray-400 text-sm">${new Date(comment.timestamp).toLocaleDateString()}</span>
                                         </div>
-                                        <p class="text-gray-700">${comment.comment}</p>
+                                        <p class="text-gray-700 ${comment.is_admin ? 'font-medium' : ''}">${comment.comment}</p>
                                     </div>
                                 `).join('')}
                             </div>
@@ -924,7 +1122,8 @@ HTML_TEMPLATE = '''
                 body: JSON.stringify({
                     water_source_id: sourceId,
                     username: currentUsername,
-                    comment: commentText
+                    comment: commentText,
+                    is_admin: isAdmin
                 })
             })
             .then(response => response.json())
@@ -940,6 +1139,222 @@ HTML_TEMPLATE = '''
                 console.error('Error adding comment:', error);
                 alert('Error submitting comment');
             });
+        }
+
+        // Admin override water source quality
+        function adminOverride(sourceId, quality) {
+            if (!isAdmin) {
+                alert('Admin access required');
+                return;
+            }
+            
+            fetch('/admin_override', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    water_source_id: sourceId,
+                    quality: quality,
+                    admin_username: currentUsername
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Refresh the details panel and reload markers
+                    showWaterSourceDetails(sourceId);
+                    loadWaterSources();
+                } else {
+                    alert('Error updating water source: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error updating water source:', error);
+                alert('Error updating water source');
+            });
+        }
+
+        // Load alerts for admin
+        function loadAlerts() {
+            if (!isAdmin) return;
+            
+            fetch('/get_alerts')
+            .then(response => response.json())
+            .then(data => {
+                // Clear existing alert markers
+                alertMarkers.forEach(marker => map.removeLayer(marker));
+                alertMarkers = [];
+                
+                // Add markers for each alert
+                data.forEach(alert => {
+                    const marker = createAlertMarker(alert);
+                    alertMarkers.push(marker);
+                    marker.addTo(map);
+                });
+                
+                // Update alerts list
+                updateAlertsNearMe(data);
+            })
+            .catch(error => {
+                console.error('Error loading alerts:', error);
+            });
+        }
+
+        // Create alert marker
+        function createAlertMarker(alert) {
+            const marker = L.marker([alert.latitude, alert.longitude], {
+                icon: L.divIcon({
+                    className: 'alert-marker',
+                    html: '<div style="background-color: #ef4444; color: white; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2); font-size: 16px;">🚨</div>',
+                    iconSize: [30, 30],
+                    iconAnchor: [15, 15]
+                })
+            });
+            
+            marker.bindPopup(`
+                <div class="p-2">
+                    <h4 class="font-bold text-lg text-red-600">⚠️ ${alert.title}</h4>
+                    <p class="text-sm mt-2">${alert.message}</p>
+                    <p class="text-xs text-gray-500 mt-2">Posted by ${alert.added_by}</p>
+                    <p class="text-xs text-gray-500">${new Date(alert.timestamp).toLocaleDateString()}</p>
+                </div>
+            `);
+            
+            return marker;
+        }
+
+        // Update alerts near me list
+        function updateAlertsNearMe(alerts = null) {
+            if (!isAdmin) return;
+            
+            const container = document.getElementById('alertsContainer');
+            
+            if (!userLocation) {
+                container.innerHTML = `
+                    <div class="text-center py-4 text-gray-500">
+                        <p class="text-sm">Click "Find Me" to see nearby alerts</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            if (!alerts) {
+                fetch('/get_alerts')
+                .then(response => response.json())
+                .then(data => updateAlertsNearMe(data))
+                .catch(error => console.error('Error fetching alerts:', error));
+                return;
+            }
+            
+            // Calculate distances and sort by proximity
+            const alertsWithDistance = alerts.map(alert => ({
+                ...alert,
+                distance: calculateDistance(
+                    userLocation.latitude, 
+                    userLocation.longitude,
+                    alert.latitude, 
+                    alert.longitude
+                )
+            })).sort((a, b) => a.distance - b.distance);
+            
+            if (alertsWithDistance.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-4 text-gray-500">
+                        <p class="text-sm">No alerts in your area</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Display nearest alerts
+            const nearestAlerts = alertsWithDistance.slice(0, 5);
+            
+            container.innerHTML = nearestAlerts.map(alert => `
+                <div class="p-3 border border-red-200 bg-red-50 rounded-lg">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <h4 class="font-medium text-red-800 mb-1">🚨 ${alert.title}</h4>
+                            <p class="text-sm text-red-700 mb-2">${alert.message}</p>
+                            <div class="text-xs text-red-600">
+                                ${formatDistance(alert.distance)} away • ${new Date(alert.timestamp).toLocaleDateString()}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Handle alert form submission
+        document.getElementById('alertForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            if (!isAdmin) {
+                alert('Admin access required');
+                return;
+            }
+            
+            const title = document.getElementById('alertTitle').value.trim();
+            const message = document.getElementById('alertMessage').value.trim();
+            const latitude = document.getElementById('alertLatitude').value;
+            const longitude = document.getElementById('alertLongitude').value;
+            
+            if (!title || !message) {
+                alert('Please fill in all fields');
+                return;
+            }
+            
+            if (!latitude || !longitude) {
+                alert('Please click on the map to set alert location');
+                return;
+            }
+            
+            fetch('/add_alert', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    title: title,
+                    message: message,
+                    latitude: parseFloat(latitude),
+                    longitude: parseFloat(longitude),
+                    added_by: currentUsername
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Reset form
+                    document.getElementById('alertForm').reset();
+                    document.getElementById('alertLatitude').value = '';
+                    document.getElementById('alertLongitude').value = '';
+                    
+                    // Remove temporary marker
+                    if (window.tempAlertMarker) {
+                        map.removeLayer(window.tempAlertMarker);
+                        window.tempAlertMarker = null;
+                    }
+                    
+                    // Reload alerts
+                    loadAlerts();
+                    
+                    alert('Alert added successfully!');
+                } else {
+                    alert('Error adding alert: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error adding alert:', error);
+                alert('Error adding alert');
+            });
+        });
+
+        // Toggle alert mode for admin
+        function toggleAlertMode() {
+            if (!isAdmin) return;
+            alertMode = !alertMode;
+            // You could add visual feedback here if needed
         }
 
         // Calculate distance between two points using Haversine formula
@@ -1021,8 +1436,9 @@ HTML_TEMPLATE = '''
             const nearestSources = sourcesWithDistance.slice(0, 10);
             
             container.innerHTML = nearestSources.map(source => {
-                const qualityColor = getQualityColor(source.cleanliness_level);
-                const qualityEmoji = getQualityEmoji(source.cleanliness_level);
+                const displayQuality = source.admin_override || source.cleanliness_level;
+                const qualityColor = getQualityColor(displayQuality);
+                const qualityEmoji = getQualityEmoji(displayQuality);
                 
                 return `
                     <div onclick="navigateToWaterSource(${source.id}, ${source.latitude}, ${source.longitude})" 
@@ -1032,9 +1448,10 @@ HTML_TEMPLATE = '''
                                 <div class="flex items-center mb-1">
                                     <span class="text-lg mr-2">${qualityEmoji}</span>
                                     <h4 class="font-medium text-gray-800 truncate">${source.name}</h4>
+                                    ${source.admin_override ? '<span class="ml-2 px-1 py-0.5 bg-blue-200 text-blue-800 text-xs rounded">ADMIN</span>' : ''}
                                 </div>
                                 <div class="flex items-center text-sm text-gray-600">
-                                    <span class="px-2 py-1 ${qualityColor} rounded text-xs mr-2">${source.cleanliness_level}</span>
+                                    <span class="px-2 py-1 ${qualityColor} rounded text-xs mr-2">${displayQuality}</span>
                                     <span>${source.water_type}</span>
                                 </div>
                                 <div class="text-xs text-gray-500 mt-1">
@@ -1181,6 +1598,7 @@ def get_water_sources():
                 'confidence_score': row['confidence_score'],
                 'notes': row['notes'],
                 'added_by': row['added_by'] if row['added_by'] else 'Anonymous',
+                'admin_override': row['admin_override'] if 'admin_override' in row.keys() else None,
                 'timestamp': row['timestamp']
             })
         
@@ -1209,6 +1627,7 @@ def get_water_source_details(source_id):
                 'confidence_score': row['confidence_score'],
                 'notes': row['notes'],
                 'added_by': row['added_by'] if row['added_by'] else 'Anonymous',
+                'admin_override': row['admin_override'] if 'admin_override' in row.keys() else None,
                 'timestamp': row['timestamp']
             }
             conn.close()
@@ -1246,7 +1665,7 @@ def get_comments(source_id):
     try:
         conn = sqlite3.connect('water_sources.db')
         cursor = conn.cursor()
-        cursor.execute('SELECT * FROM comments WHERE water_source_id = ? ORDER BY timestamp DESC', (source_id,))
+        cursor.execute('SELECT * FROM comments WHERE water_source_id = ? ORDER BY is_admin DESC, timestamp DESC', (source_id,))
         
         comments = []
         for row in cursor.fetchall():
@@ -1255,7 +1674,8 @@ def get_comments(source_id):
                 'water_source_id': row[1],
                 'username': row[2],
                 'comment': row[3],
-                'timestamp': row[4]
+                'is_admin': row[4] if len(row) > 4 else False,
+                'timestamp': row[5] if len(row) > 5 else row[4]
             })
         
         conn.close()
@@ -1294,13 +1714,95 @@ def add_comment():
         water_source_id = data['water_source_id']
         username = data['username']
         comment = data['comment']
+        is_admin = data.get('is_admin', False)
         
         conn = sqlite3.connect('water_sources.db')
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO comments (water_source_id, username, comment)
-            VALUES (?, ?, ?)
-        ''', (water_source_id, username, comment))
+            INSERT INTO comments (water_source_id, username, comment, is_admin)
+            VALUES (?, ?, ?, ?)
+        ''', (water_source_id, username, comment, is_admin))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/admin_override', methods=['POST'])
+def admin_override():
+    try:
+        data = request.get_json()
+        water_source_id = data['water_source_id']
+        quality = data['quality']
+        admin_username = data['admin_username']
+        
+        # Verify admin access
+        if admin_username.lower() != 'admin':
+            return jsonify({'success': False, 'error': 'Admin access required'}), 403
+        
+        conn = sqlite3.connect('water_sources.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE water_sources 
+            SET admin_override = ?
+            WHERE id = ?
+        ''', (quality, water_source_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/get_alerts')
+def get_alerts():
+    try:
+        conn = sqlite3.connect('water_sources.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM alerts ORDER BY timestamp DESC')
+        
+        alerts = []
+        for row in cursor.fetchall():
+            alerts.append({
+                'id': row[0],
+                'title': row[1],
+                'message': row[2],
+                'latitude': row[3],
+                'longitude': row[4],
+                'alert_type': row[5],
+                'added_by': row[6],
+                'timestamp': row[7]
+            })
+        
+        conn.close()
+        return jsonify(alerts)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/add_alert', methods=['POST'])
+def add_alert():
+    try:
+        data = request.get_json()
+        
+        # Verify admin access
+        if data.get('added_by', '').lower() != 'admin':
+            return jsonify({'success': False, 'error': 'Admin access required'}), 403
+        
+        conn = sqlite3.connect('water_sources.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO alerts (title, message, latitude, longitude, added_by)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (
+            data['title'],
+            data['message'],
+            data['latitude'],
+            data['longitude'],
+            data['added_by']
+        ))
         
         conn.commit()
         conn.close()
@@ -1313,22 +1815,10 @@ if __name__ == '__main__':
     # Initialize database
     init_db()
     
-    print("🌊 Where's the Well? - Water Source Locator")
+    print("Where's the Well? - Water Source Locator")
     print("=" * 50)
     print("Starting application...")
     print("Open your browser and go to: http://localhost:5000")
-    print("\nFeatures:")
-    print("• Interactive map with pin placement")
-    print("• GPS location detection")
-    print("• Photo-based water quality analysis")
-    print("• Offline data storage")
-    print("• Real-time statistics")
-    print("\nTo use:")
-    print("1. Click 'Find Me' to get your current location")
-    print("2. Click anywhere on the map to place a water source")
-    print("3. Fill in the details and upload a photo")
-    print("4. The app will automatically analyze water quality")
-    print("5. View all sources on the interactive map")
     
     # Run the Flask app
     app.run(debug=True, host='0.0.0.0', port=5000)
