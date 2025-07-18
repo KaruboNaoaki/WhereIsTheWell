@@ -1,4 +1,4 @@
-# Where's the Well? 💧
+# Where's the Well?
 
 An offline-first water source mapping application designed for underserved communities to locate, evaluate, and share information about local water sources.
 
