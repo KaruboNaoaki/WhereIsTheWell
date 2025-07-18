@@ -82,9 +82,3 @@ The application consists of a single Python file containing:
 - SQLite database management
 - OpenCV-based water quality classifier
 - HTML template with embedded CSS and JavaScript
-
-This monolithic structure makes deployment simple while keeping all functionality in one place.
-
----
-
-*Built for communities that need reliable access to clean water information, regardless of internet connectivity.*
