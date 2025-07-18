@@ -39,12 +39,6 @@ Install the required Python packages:
 pip install flask opencv-python numpy Pillow
 ```
 
-Or if you prefer specific versions for stability:
-
-```bash
-pip install flask==2.3.3 opencv-python==4.8.1.78 numpy==1.24.3 Pillow==10.0.1
-```
-
 ### Running the Application
 
 1. Clone or download the repository
@@ -57,8 +51,6 @@ python wheres_the_well_app.py
 
 4. Open your browser and go to `http://localhost:5000`
 
-That's it! The application will create its database automatically on first run.
-
 ## System Requirements
 
 ### Development Environment
@@ -66,12 +58,6 @@ That's it! The application will create its database automatically on first run.
 - Modern web browser (Chrome, Firefox, Safari, or Edge)
 - Camera access (optional, for photo capture)
 - Location services (optional, for GPS features)
-
-### Runtime Considerations
-- No internet connection required after initial page load
-- Approximately 10MB of local storage for the database
-- JavaScript must be enabled in the browser
-- For best experience, allow location and camera permissions when prompted
 
 ### Browser Compatibility
 The application works on any modern browser that supports:
@@ -82,7 +68,7 @@ The application works on any modern browser that supports:
 
 ## Usage
 
-1. **Login**: Enter any username and password to get started
+1. **Login**: Enter any username and password to get started (limited login for ease of testers, archived code can be used to re-enable)
 2. **Find Your Location**: Click "Find Me" to center the map on your current location
 3. **Add Water Sources**: Click anywhere on the map to place a new water source marker
 4. **Upload Photos**: Take or upload photos for automatic water quality analysis
