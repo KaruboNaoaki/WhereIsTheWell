@@ -424,6 +424,12 @@ HTML_TEMPLATE = '''
                     <!-- Add Alert Form -->
                     <div class="mb-4 p-3 bg-red-50 rounded-lg">
                         <h4 class="font-medium text-gray-800 mb-2">Add New Alert</h4>
+                        <div class="mb-2">
+                            <button id="alertModeToggle" onclick="toggleAlertMode()" class="px-3 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 transition">
+                                📍 Click to Enable Alert Mode
+                            </button>
+                            <p class="text-xs text-gray-600 mt-1">Toggle this to place alerts instead of water sources</p>
+                        </div>
                         <form id="alertForm" class="space-y-2">
                             <input type="text" id="alertTitle" placeholder="Alert title..." class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500" required>
                             <textarea id="alertMessage" placeholder="Alert message..." rows="2" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none" required></textarea>
@@ -433,7 +439,7 @@ HTML_TEMPLATE = '''
                                 🚨 Add Alert to Map
                             </button>
                         </form>
-                        <p class="text-xs text-gray-500 mt-2">Click on the map to set alert location</p>
+                        <p class="text-xs text-gray-500 mt-2" id="alertInstructions">Enable alert mode, then click on the map to set alert location</p>
                     </div>
                     
                     <div id="alertsContainer" class="space-y-3">
@@ -576,6 +582,13 @@ HTML_TEMPLATE = '''
             document.getElementById('latitude').value = '';
             document.getElementById('longitude').value = '';
             
+            // Reset alert form if admin
+            if (document.getElementById('alertForm')) {
+                document.getElementById('alertForm').reset();
+                document.getElementById('alertLatitude').value = '';
+                document.getElementById('alertLongitude').value = '';
+            }
+            
             // Show login page
             document.getElementById('loginPage').style.display = 'block';
             document.getElementById('usernameInput').value = '';
@@ -613,7 +626,7 @@ HTML_TEMPLATE = '''
                             iconSize: [30, 30],
                             iconAnchor: [15, 15]
                         })
-                    }).addTo(map).bindPopup("📍 New alert location").openPopup();
+                    }).addTo(map).bindPopup("🚨 New alert location").openPopup();
                 } else {
                     // Regular water source placement
                     selectedLatLng = e.latlng;
@@ -1036,7 +1049,10 @@ HTML_TEMPLATE = '''
                                                 ${comment.is_admin ? '<span class="ml-2 px-2 py-1 bg-blue-200 text-blue-800 text-xs rounded-full">ADMIN</span>' : ''}
                                                 ${comment.is_admin ? '<span class="ml-2 text-blue-600">📌</span>' : ''}
                                             </div>
-                                            <span class="text-gray-400 text-sm">${new Date(comment.timestamp).toLocaleDateString()}</span>
+                                            <div class="flex items-center space-x-2">
+                                                <span class="text-gray-400 text-sm">${new Date(comment.timestamp).toLocaleDateString()}</span>
+                                                ${isAdmin ? `<button onclick="deleteComment(${comment.id}, ${sourceId})" class="text-red-500 hover:text-red-700 text-xs">🗑️</button>` : ''}
+                                            </div>
                                         </div>
                                         <p class="text-gray-700 ${comment.is_admin ? 'font-medium' : ''}">${comment.comment}</p>
                                     </div>
@@ -1046,9 +1062,12 @@ HTML_TEMPLATE = '''
 
                         <!-- Close Button -->
                         <div class="border-t border-gray-200 pt-6">
-                            <button onclick="hideWaterSourceDetails()" class="w-full py-3 px-4 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium">
-                                ✕ Close Details
-                            </button>
+                            <div class="flex space-x-3">
+                                <button onclick="hideWaterSourceDetails()" class="flex-1 py-3 px-4 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium">
+                                    ✕ Close Details
+                                </button>
+                                ${isAdmin ? `<button onclick="deleteWaterSource(${sourceId})" class="py-3 px-4 bg-red-500 text-white rounded-lg hover:bg-red-600 transition font-medium">🗑️ Delete Source</button>` : ''}
+                            </div>
                         </div>
                     </div>
                 `;
@@ -1330,11 +1349,19 @@ HTML_TEMPLATE = '''
                     document.getElementById('alertLatitude').value = '';
                     document.getElementById('alertLongitude').value = '';
                     
-                    // Remove temporary marker
+                    // Remove temporary marker and disable alert mode
                     if (window.tempAlertMarker) {
                         map.removeLayer(window.tempAlertMarker);
                         window.tempAlertMarker = null;
                     }
+                    
+                    // Turn off alert mode
+                    alertMode = false;
+                    const button = document.getElementById('alertModeToggle');
+                    const instructions = document.getElementById('alertInstructions');
+                    button.textContent = '📍 Click to Enable Alert Mode';
+                    button.className = 'px-3 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 transition';
+                    instructions.textContent = 'Enable alert mode, then click on the map to set alert location';
                     
                     // Reload alerts
                     loadAlerts();
@@ -1353,8 +1380,98 @@ HTML_TEMPLATE = '''
         // Toggle alert mode for admin
         function toggleAlertMode() {
             if (!isAdmin) return;
+            
             alertMode = !alertMode;
-            // You could add visual feedback here if needed
+            const button = document.getElementById('alertModeToggle');
+            const instructions = document.getElementById('alertInstructions');
+            
+            if (alertMode) {
+                button.textContent = '🚨 Alert Mode: ON (Click to Disable)';
+                button.className = 'px-3 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition';
+                instructions.textContent = 'Alert mode enabled - click on the map to place an alert';
+            } else {
+                button.textContent = '📍 Click to Enable Alert Mode';
+                button.className = 'px-3 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 transition';
+                instructions.textContent = 'Enable alert mode, then click on the map to set alert location';
+                
+                // Remove any temporary alert marker
+                if (window.tempAlertMarker) {
+                    map.removeLayer(window.tempAlertMarker);
+                    window.tempAlertMarker = null;
+                }
+            }
+        }
+
+        // Delete comment (admin only)
+        function deleteComment(commentId, sourceId) {
+            if (!isAdmin) {
+                alert('Admin access required');
+                return;
+            }
+            
+            if (!confirm('Are you sure you want to delete this comment?')) {
+                return;
+            }
+            
+            fetch('/delete_comment', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    comment_id: commentId,
+                    admin_username: currentUsername
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showWaterSourceDetails(sourceId);
+                } else {
+                    alert('Error deleting comment: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting comment:', error);
+                alert('Error deleting comment');
+            });
+        }
+
+        // Delete water source (admin only)
+        function deleteWaterSource(sourceId) {
+            if (!isAdmin) {
+                alert('Admin access required');
+                return;
+            }
+            
+            if (!confirm('Are you sure you want to delete this water source? This will also delete all associated comments and votes.')) {
+                return;
+            }
+            
+            fetch('/delete_water_source', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    water_source_id: sourceId,
+                    admin_username: currentUsername
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    hideWaterSourceDetails();
+                    loadWaterSources();
+                    alert('Water source deleted successfully');
+                } else {
+                    alert('Error deleting water source: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting water source:', error);
+                alert('Error deleting water source');
+            });
         }
 
         // Calculate distance between two points using Haversine formula
@@ -1664,24 +1781,83 @@ def get_votes(source_id):
 def get_comments(source_id):
     try:
         conn = sqlite3.connect('water_sources.db')
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM comments WHERE water_source_id = ? ORDER BY is_admin DESC, timestamp DESC', (source_id,))
         
         comments = []
         for row in cursor.fetchall():
             comments.append({
-                'id': row[0],
-                'water_source_id': row[1],
-                'username': row[2],
-                'comment': row[3],
-                'is_admin': row[4] if len(row) > 4 else False,
-                'timestamp': row[5] if len(row) > 5 else row[4]
+                'id': row['id'],
+                'water_source_id': row['water_source_id'],
+                'username': row['username'],
+                'comment': row['comment'],
+                'is_admin': bool(row['is_admin']) if 'is_admin' in row.keys() else False,
+                'timestamp': row['timestamp']
             })
         
         conn.close()
         return jsonify(comments)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/delete_comment', methods=['POST'])
+def delete_comment():
+    try:
+        data = request.get_json()
+        comment_id = data['comment_id']
+        admin_username = data['admin_username']
+        
+        # Verify admin access
+        if admin_username.lower() != 'admin':
+            return jsonify({'success': False, 'error': 'Admin access required'}), 403
+        
+        conn = sqlite3.connect('water_sources.db')
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM comments WHERE id = ?', (comment_id,))
+        
+        if cursor.rowcount == 0:
+            return jsonify({'success': False, 'error': 'Comment not found'}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/delete_water_source', methods=['POST'])
+def delete_water_source():
+    try:
+        data = request.get_json()
+        water_source_id = data['water_source_id']
+        admin_username = data['admin_username']
+        
+        # Verify admin access
+        if admin_username.lower() != 'admin':
+            return jsonify({'success': False, 'error': 'Admin access required'}), 403
+        
+        conn = sqlite3.connect('water_sources.db')
+        cursor = conn.cursor()
+        
+        # Delete associated comments first
+        cursor.execute('DELETE FROM comments WHERE water_source_id = ?', (water_source_id,))
+        
+        # Delete associated votes
+        cursor.execute('DELETE FROM votes WHERE water_source_id = ?', (water_source_id,))
+        
+        # Delete the water source
+        cursor.execute('DELETE FROM water_sources WHERE id = ?', (water_source_id,))
+        
+        if cursor.rowcount == 0:
+            return jsonify({'success': False, 'error': 'Water source not found'}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/vote', methods=['POST'])
 def vote():
@@ -1819,6 +1995,6 @@ if __name__ == '__main__':
     print("=" * 50)
     print("Starting application...")
     print("Open your browser and go to: http://localhost:5000")
-    
+
     # Run the Flask app
     app.run(debug=True, host='0.0.0.0', port=5000)
