@@ -74,11 +74,3 @@ The application works on any modern browser that supports:
 4. **Upload Photos**: Take or upload photos for automatic water quality analysis
 5. **Browse Nearby Sources**: Check the "Water Sources Near Me" panel for the closest options
 6. **Community Feedback**: Vote on accuracy and leave comments on existing water sources
-
-## Project Structure
-
-The application consists of a single Python file containing:
-- Flask web server and API endpoints
-- SQLite database management
-- OpenCV-based water quality classifier
-- HTML template with embedded CSS and JavaScript
